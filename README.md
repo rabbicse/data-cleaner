@@ -1,1 +1,3 @@
-# data-cleaner
+# Prerequisites
+- python3.6+
+- 
