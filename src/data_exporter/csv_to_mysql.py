@@ -9,7 +9,7 @@ from collections import OrderedDict
 from logging.handlers import RotatingFileHandler
 from multiprocessing import Semaphore, Value
 
-from sqlalchemy import create_engine, Column, Integer, UnicodeText, Unicode, func, inspect
+from sqlalchemy import create_engine, Column, Integer, UnicodeText, Unicode, func, inspect, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -78,9 +78,11 @@ def to_dict(obj, with_relationships=True):
 class Model(DeclarativeBase):
     """Sqlalchemy deals model"""
     __tablename__ = "csv_data"
-    __table_args__ = {
-        'mysql_charset': 'utf8'
-    }
+    __table_args__ = (
+        # Index('business_unique', 'Name', 'Phone', unique=True),
+        {
+            'mysql_charset': 'utf8',
+        })
 
     def __init__(self, **kwargs):
         cls_ = type(self)
@@ -89,7 +91,7 @@ class Model(DeclarativeBase):
                 setattr(self, k, kwargs[k])
 
     id = Column(Integer, primary_key=True)
-    Name = Column(UnicodeText)
+    Name = Column(Unicode(300))
     Website = Column(UnicodeText)
     Type = Column(Unicode(255))
     subtypes = Column(UnicodeText)
@@ -129,6 +131,7 @@ class Model(DeclarativeBase):
     site_description = Column(UnicodeText)
     site_keywords = Column(UnicodeText)
 
+# Index('business_unique', Model.Name, Model.full_address, unique=True)
 
 class CsvToDbConverter:
     __total = Value('i', 0)
@@ -235,7 +238,19 @@ class CsvToDbConverter:
 
                             # new code
                             buffer.append(data_dict)
-                            if len(buffer) % 10000 == 0:
+
+                            if any([b for b in buffer if data_dict['Name'].lower() == b['Name'] and
+                                                       data_dict['full_address'] == b['full_address']]):
+                                logger.warning('item already exists!')
+                                continue
+
+                            query = {'Name': data_dict['Name'], 'full_address': data_dict['full_address']}
+                            q_data = session.query(Model).filter_by(**query).first()
+                            if q_data:
+                                logger.warning('item inside database!')
+                                continue
+
+                            if len(buffer) % 1000 == 0:
                                 session.bulk_insert_mappings(Model, buffer)
                                 session.commit()
                                 buffer = []
